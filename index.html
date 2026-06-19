@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision AI — Industrial Neural Scanning System</title>
+  
+  <!-- Import Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- External Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Background Canvas for processing frames offline -->
+  <canvas id="captureCanvas"></canvas>
+
+  <header>
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-logo"></div>
+        <div class="brand-text">
+          <h1>Vision AI</h1>
+          <p>Neural Scanning System</p>
+        </div>
+      </div>
+      
+      <div class="sys-controls">
+        <div class="audio-toggles">
+          <!-- TTS Toggle -->
+          <button id="toggleTtsBtn" class="toggle-btn" title="Toggle Narrative (Text-To-Speech)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+          </button>
+          <!-- Audio FX Toggle -->
+          <button id="toggleAudioBtn" class="toggle-btn active" title="Toggle Synthesized SFX">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div id="statusPill" class="sys-status offline">
+          <div class="status-indicator"></div>
+          <span id="statusPillText">OFFLINE</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Viewport Column (Left) -->
+    <div class="viewport-panel">
+      
+      <!-- Video Frame Container -->
+      <div class="viewport-card" id="viewportContainer">
+        
+        <!-- Live Video Element -->
+        <video id="videoFeed" autoplay muted playsinline></video>
+        
+        <!-- Overlay for Bounding Boxes and Scan Lines -->
+        <canvas id="overlayCanvas"></canvas>
+
+        <!-- Static Hud Graphic Overlays -->
+        <div class="view-overlay-static">
+          <div class="overlay-top">
+            <div class="overlay-badge overlay-badge-neon">
+              <span id="overlayResolution">CAMERA DISCONNECTED</span>
+            </div>
+            <div class="overlay-badge">
+              <span>FPS:</span> <span id="fpsCounter" style="color:var(--accent-cyan)">0.0</span>
+            </div>
+          </div>
+          
+          <div class="crosshairs"></div>
+          <div class="corner-bracket bracket-tl"></div>
+          <div class="corner-bracket bracket-tr"></div>
+          <div class="corner-bracket bracket-bl"></div>
+          <div class="corner-bracket bracket-br"></div>
+          <div class="scanning-laser"></div>
+
+          <div class="overlay-bottom">
+            <div class="overlay-badge">
+              <span>LATENCY:</span> <span id="latencyText" style="color:var(--accent-violet)">0ms</span>
+            </div>
+            <div class="overlay-badge">
+              <span id="timestampText">00:00:00 UTC</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Initial Placeholder Screen -->
+        <div class="placeholder-view" id="cameraPlaceholder">
+          <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <p style="color: var(--text-sec); font-family: var(--font-grotesk); font-size: 14px;">Camera Feed Offline</p>
+        </div>
+
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="viewport-actions">
+        <button id="startFeedBtn" class="btn-action btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Initialize Feed
+        </button>
+        <button id="stopFeedBtn" class="btn-action" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect></svg>
+          Terminate
+        </button>
+        <button id="captureSnapshotBtn" class="btn-action" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+          Snapshot
+        </button>
+      </div>
+
+      <!-- Errors/Warnings Banner -->
+      <div class="notification-banner" id="errorBanner">
+        <svg class="notification-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <div class="notification-message" id="errorMessage">System Alert Message</div>
+      </div>
+
+    </div>
+
+    <!-- Workspace Controls Panel (Right) -->
+    <div class="control-panel">
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-btn active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          Hub
+        </button>
+        <button class="tab-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          Analytics
+        </button>
+        <button class="tab-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          Gallery (<span id="galleryCountText">0</span>)
+        </button>
+        <button class="tab-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.5 1z"></path></svg>
+          Settings
+        </button>
+      </div>
+
+      <!-- Tab Viewports -->
+      <div class="tab-viewport">
+        
+        <!-- Tab 1: Analyst Hub -->
+        <div id="tab-hub" class="tab-content active">
+          
+          <div class="analysis-container">
+            <div class="analysis-header">
+              <div class="analysis-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;color:var(--accent-cyan)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                AI Interpretation
+              </div>
+              <button id="speakButton" class="btn-speak" title="Read Aloud">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+              </button>
+            </div>
+            
+            <div class="analysis-body empty" id="cloudAnalysisText">
+              Initialize camera and point at a scene. Press "Scan Feed Now" or enable automated interval scanning to interpret the live viewport.
+            </div>
+
+            <!-- Sleek Scanner Loader -->
+            <div class="analysis-loader" id="analysisLoader">
+              <div class="loader-spinner"></div>
+              <div class="loader-text" id="loaderText">CONTACTING CLOUD ENGINE...</div>
+            </div>
+          </div>
+
+          <!-- Console logs -->
+          <div class="console-container">
+            <div class="console-header">
+              <div class="console-title">Neural Engine Output Console</div>
+              <button id="consoleClearBtn" class="console-clear">Clear</button>
+            </div>
+            <div class="console-logs" id="consoleLogs">
+              <!-- Logs dynamic generation -->
+            </div>
+          </div>
+
+          <button id="scanManualBtn" class="btn-action" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Scan Feed Now
+          </button>
+
+        </div>
+
+        <!-- Tab 2: Analytics & Metrics -->
+        <div id="tab-analytics" class="tab-content">
+          <div class="analytics-stats">
+            <div class="stat-card">
+              <div class="stat-label">Neural Latency</div>
+              <div class="stat-value" id="latencyStat">0 ms</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Scans Performed</div>
+              <div class="stat-value" id="scansCountStat">0</div>
+            </div>
+          </div>
+
+          <div class="chart-container">
+            <canvas id="analyticsChart"></canvas>
+          </div>
+
+          <div class="entity-list-container">
+            <div class="entity-list-header">Detected Entity Database</div>
+            <div class="entity-list" id="entityList">
+              <div class="entity-empty">No objects detected yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Gallery -->
+        <div id="tab-gallery" class="tab-content">
+          <div class="gallery-grid" id="galleryGrid">
+            <!-- Items injected by JS -->
+          </div>
+          <div class="gallery-empty" id="galleryEmptyState">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <p>No snapshots captured yet.<br>Click "Snapshot" while feed is live to freeze and save files.</p>
+          </div>
+        </div>
+
+        <!-- Tab 4: System Configuration -->
+        <div id="tab-settings" class="tab-content">
+          
+          <!-- Cloud API settings -->
+          <div class="settings-group">
+            <div class="settings-group-title">Cloud AI Credentials</div>
+            
+            <div class="setting-row">
+              <label class="setting-label">API Core Link Mode</label>
+              <select class="setting-select" id="apiModeSelect">
+                <option value="demo">Local Detection & Simulation (Zero-Key Demo)</option>
+                <option value="gemini">Google Gemini API (Direct Browser Link)</option>
+                <option value="custom">Custom Proxy Endpoint (CORS Safe)</option>
+              </select>
+            </div>
+
+            <div class="setting-row" id="apiKeySettingRow" style="display:none">
+              <label class="setting-label">Google Gemini API Key</label>
+              <div class="setting-input-wrapper">
+                <input type="password" id="geminiApiKeyInput" class="setting-input" placeholder="AIzaSy...">
+                <button id="toggleVisibilityBtn" class="btn-toggle-visibility">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-row" id="proxyUrlSettingRow" style="display:none">
+              <label class="setting-label">Custom Proxy URL</label>
+              <input type="text" id="proxyUrlInput" class="setting-input" placeholder="https://api.yourproxy.com/v1/analyze">
+            </div>
+            
+            <div class="setting-row" id="modelSelectRow" style="display:none">
+              <label class="setting-label">Gemini Vision Model</label>
+              <select class="setting-select" id="modelSelect">
+                <option value="gemini-2.5-flash">gemini-2.5-flash (Standard, Fast)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (High Detail)</option>
+                <option value="gemini-1.5-flash">gemini-1.5-flash (Legacy)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Neural scanner thresholds -->
+          <div class="settings-group">
+            <div class="settings-group-title">Engine Parameters</div>
+            
+            <div class="setting-row">
+              <label class="setting-label">Local Model Confidence Threshold</label>
+              <div class="range-slider-wrapper">
+                <input type="range" id="confidenceThreshold" class="range-slider" min="30" max="90" value="50">
+                <span class="range-value" id="confidenceThresholdVal">50%</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">Automated Cloud Scan Loop</label>
+              <select class="setting-select" id="autoScanLoop">
+                <option value="off">Off (Manual scan triggers only)</option>
+                <option value="5000">Every 5 Seconds</option>
+                <option value="10000">Every 10 Seconds</option>
+                <option value="15000">Every 15 Seconds</option>
+                <option value="30000">Every 30 Seconds</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- TTS Speech configs -->
+          <div class="settings-group">
+            <div class="settings-group-title">Speech Synthesizer Console</div>
+            
+            <div class="setting-row">
+              <label class="setting-label">Voice Engine</label>
+              <select class="setting-select" id="ttsVoiceSelect">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">Narration Speech Rate</label>
+              <div class="range-slider-wrapper">
+                <input type="range" id="ttsRateSlider" class="range-slider" min="5" max="20" value="10">
+                <span class="range-value" id="ttsRateVal">1.0x</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom prompt instructions -->
+          <div class="settings-group">
+            <div class="settings-group-title">Multimodal Prompt Blueprint</div>
+            <div class="setting-row">
+              <label class="setting-label">System Directives</label>
+              <textarea id="promptTemplateInput" class="setting-input textarea-prompt"></textarea>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Snapshot Expansion Modal -->
+  <div class="modal-overlay" id="galleryModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">SNAPSHOT REPORT</div>
+        <button id="modalCloseBtn" class="modal-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-img-container">
+          <img id="modalImage" src="" alt="Captured scene frame">
+        </div>
+        <div class="modal-meta">
+          <div><span style="color:var(--accent-cyan)">TIMESTAMP:</span> <span id="modalMetaTimestamp"></span></div>
+          <div><span style="color:var(--accent-violet)">CLOUD SCENE ANALYSIS:</span> <span id="modalMetaAnalysis" style="color:var(--text-main)"></span></div>
+          <div><span style="color:var(--accent-cyan)">LOCAL DETECTIONS:</span> <span id="modalMetaDetections"></span></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-action" id="modalDeleteBtn">Delete File</button>
+        <button class="btn-action btn-primary" id="modalDownloadBtn">Download JPEG</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-container">
+      <div>VISION AI v1.0.0 // STATUS: ONLINE // SYSTEM SECURE</div>
+      <div class="footer-links">
+        <span style="color: var(--text-muted)">Powered by Google Gemini</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Script Imports: TensorFlow.js & COCO-SSD Model -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <!-- External Application Logic -->
+  <script src="app.js" defer></script>
+</body>
+</html>
